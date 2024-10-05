@@ -155,3 +155,42 @@ filewrite(struct file *f, char *addr, int n)
   panic("filewrite");
 }
 
+// lseek without the offset being able to go past the actual size of the file
+// (always between 0 and size) thus preventing file extension through lseek
+int 
+filelseek(struct file *f,int off,int whence)
+{
+  if(f->type == FD_PIPE) // si on a un tube on retourne -1
+    return -1;
+  int new_off;
+  if(whence == 0) // lseek appelé avec SEEK_SET
+  {
+    if(off < 0) // on accepte pas les offset négatifs avec SEEK_SET
+      return -1;
+    new_off = off; 
+  } 
+  else if ( whence == 1) // lseek appelé avec SEEK_CUR
+    new_off = f->off + off;
+  else // lseek appelé avec SEEK_END
+  {
+    ilock(f->ip);
+    new_off = f->ip->size + off;
+  }
+  if(whence < 2) // si whence = 2 on à déjà acquis le verrou sur f->ip
+  {
+    ilock(f->ip); 
+  }
+
+  if( new_off > f->ip->size) // si new_off > size , new_off <- size
+    new_off = f->ip->size-1;
+  
+  iunlock(f->ip); // libération verrou
+    
+  if(new_off < 0) // si nouvel offset négatif on le borne à 0
+    new_off = 0;
+
+  f->off = new_off;
+  return new_off;
+}
+
+
